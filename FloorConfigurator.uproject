@@ -1,0 +1,22 @@
+{
+	"FileVersion": 3,
+	"EngineAssociation": "{470DE6C7-4B17-A549-3451-CB9A3D1DE66C}",
+	"Category": "",
+	"Description": "",
+	"Modules": [
+		{
+			"Name": "FloorConfigurator",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "ModelingToolsEditorMode",
+			"Enabled": true,
+			"TargetAllowList": [
+				"Editor"
+			]
+		}
+	]
+}
