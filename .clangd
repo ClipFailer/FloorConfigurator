@@ -1,0 +1,15 @@
+CompileFlags:
+  Add:
+    - -ferror-limit=0
+    - -Wno-unknown-pragmas
+    - -Wno-ignored-attributes
+    - -Wno-microsoft-template
+    - -Wno-unused-includes
+  Remove:
+    - -resource-dir=*
+Diagnostics:
+  Suppress:
+    - "clang-diagnostic-unknown-pragmas"
+    - "clang-diagnostic-ignored-attributes"
+    - "unused-includes"
+    - "undeclared_var_use"

@@ -1,0 +1,20 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Launch FloorConfigurator (Debug)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "C:\\Projects\\UE\\FloorConfigurator\\Binaries\\Win64\\UnrealEditor-FloorConfigurator.exe",
+            "args": [
+                "C:\\Projects\\UE\\FloorConfigurator\\FloorConfigurator.uproject",
+                "-game",
+                "-debug"
+            ],
+            "stopAtEntry": false,
+            "cwd": "C:\\Projects\\UE\\FloorConfigurator",
+            "environment": [],
+            "console": "externalTerminal"
+        }
+    ]
+}
