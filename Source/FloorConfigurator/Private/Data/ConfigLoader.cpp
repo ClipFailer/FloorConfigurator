@@ -1,5 +1,5 @@
-#include "ConfigLoader.h"
-#include "BuildingConfig.h"
+#include "Data/ConfigLoader.h"
+#include "Data/BuildingConfig.h"
 
 #include "Misc/Paths.h"
 #include "Misc/FileHelper.h"
@@ -20,8 +20,8 @@ namespace
 
 bool FConfigLoader::LoadConfig(FBuildingConfig& OutConfig)
 {
-	// Получаем путь к конфигу config.json.
-	const FString ConfigPath = FPaths::ProjectContentDir() / TEXT("Data/config.json");
+	// Получаем путь к конфигу config.json из папки Config.
+	const FString ConfigPath = FPaths::ProjectConfigDir() / TEXT("config.json");
 
 	UE_LOG(LogTemp, Log, TEXT("[FConfigLoader] Поиск файла конфига: %s"), *ConfigPath);
 

@@ -1,20 +1,26 @@
 [
 	{
-		"file": "C:/Projects/UE/FloorConfigurator/Intermediate/Build/Win64/x64/UnrealEditor/Development/FloorConfigurator/Module.FloorConfigurator.gen.cpp",
-		"command": "\"C:/Program Files/LLVM/bin/clang-cl.exe\" @\"C:/Projects/UE/FloorConfigurator/Intermediate/Build/Win64/x64/UnrealEditor/Development/FloorConfigurator/Module.FloorConfigurator.gen.cpp.obj.rsp\" ",
-		"directory": "C:/Program Files/Epic Games/UE_5.8/Engine/Source",
-		"output": "C:/Projects/UE/FloorConfigurator/Intermediate/Build/Win64/x64/UnrealEditor/Development/FloorConfigurator/Module.FloorConfigurator.gen.cpp.obj"
+		"file": "C:\\Projects\\UE\\FloorConfigurator\\Source\\FloorConfigurator\\FloorConfigurator.cpp",
+		"arguments": [
+			"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.exe",
+			"@C:\\Projects\\UE\\FloorConfigurator\\.vscode\\compileCommands_FloorConfigurator\\FloorConfigurator.0.rsp"
+		],
+		"directory": "C:\\Program Files\\Epic Games\\UE_5.8\\Engine\\Source"
 	},
 	{
-		"file": "C:/Projects/UE/FloorConfigurator/Intermediate/Build/Win64/x64/UnrealEditor/Development/FloorConfigurator/PerModuleInline.gen.cpp",
-		"command": "\"C:/Program Files/LLVM/bin/clang-cl.exe\" @\"C:/Projects/UE/FloorConfigurator/Intermediate/Build/Win64/x64/UnrealEditor/Development/FloorConfigurator/PerModuleInline.gen.cpp.obj.rsp\" ",
-		"directory": "C:/Program Files/Epic Games/UE_5.8/Engine/Source",
-		"output": "C:/Projects/UE/FloorConfigurator/Intermediate/Build/Win64/x64/UnrealEditor/Development/FloorConfigurator/PerModuleInline.gen.cpp.obj"
+		"file": "C:\\Projects\\UE\\FloorConfigurator\\Source\\FloorConfigurator\\Private\\Data\\ConfigLoader.cpp",
+		"arguments": [
+			"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.exe",
+			"@C:\\Projects\\UE\\FloorConfigurator\\.vscode\\compileCommands_FloorConfigurator\\FloorConfigurator.0.rsp"
+		],
+		"directory": "C:\\Program Files\\Epic Games\\UE_5.8\\Engine\\Source"
 	},
 	{
-		"file": "C:/Projects/UE/FloorConfigurator/Source/FloorConfigurator/FloorConfigurator.cpp",
-		"command": "\"C:/Program Files/LLVM/bin/clang-cl.exe\" @\"C:/Projects/UE/FloorConfigurator/Intermediate/Build/Win64/x64/UnrealEditor/Development/FloorConfigurator/FloorConfigurator.cpp.obj.rsp\" ",
-		"directory": "C:/Program Files/Epic Games/UE_5.8/Engine/Source",
-		"output": "C:/Projects/UE/FloorConfigurator/Intermediate/Build/Win64/x64/UnrealEditor/Development/FloorConfigurator/FloorConfigurator.cpp.obj"
+		"file": "C:\\Projects\\UE\\FloorConfigurator\\Source\\FloorConfigurator\\Private\\Subsystems\\FloorConfiguratorSubsystem.cpp",
+		"arguments": [
+			"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.exe",
+			"@C:\\Projects\\UE\\FloorConfigurator\\.vscode\\compileCommands_FloorConfigurator\\FloorConfigurator.0.rsp"
+		],
+		"directory": "C:\\Program Files\\Epic Games\\UE_5.8\\Engine\\Source"
 	}
 ]

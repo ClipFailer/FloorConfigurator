@@ -3,10 +3,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "FloorData.h"
+#include "Data/FloorData.h"
 #include "BuildingConfig.generated.h"
-
-struct FFloorData;
 
 /**
  * Корневая структура конфигурации здания.

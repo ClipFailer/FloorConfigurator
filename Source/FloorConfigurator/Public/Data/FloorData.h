@@ -2,8 +2,8 @@
 
 #pragma once
 
-#include "ApartmentData.h"
 #include "CoreMinimal.h"
+#include "Data/ApartmentData.h"
 #include "FloorData.generated.h"
 
 /**

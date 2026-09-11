@@ -1,13 +1,16 @@
 {
 	"FileVersion": 3,
-	"EngineAssociation": "{844530F5-4D80-F9A7-6319-E1AF7D94055B}",
+	"EngineAssociation": "{89083D4A-444B-426C-059C-3182BB5BF344}",
 	"Category": "",
 	"Description": "",
 	"Modules": [
 		{
 			"Name": "FloorConfigurator",
 			"Type": "Runtime",
-			"LoadingPhase": "Default"
+			"LoadingPhase": "Default",
+			"AdditionalDependencies": [
+				"Engine"
+			]
 		}
 	],
 	"Plugins": [
