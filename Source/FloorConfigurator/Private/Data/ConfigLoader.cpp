@@ -1,9 +1,8 @@
 #include "Data/ConfigLoader.h"
 #include "Data/BuildingConfig.h"
-
-#include "Misc/Paths.h"
-#include "Misc/FileHelper.h"
 #include "JsonObjectConverter.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
 
 // анонимный namespace
 namespace
@@ -11,10 +10,7 @@ namespace
 	// Проверяет, что все обязательные поля квартиры заполнены корректно.
 	bool IsApartmentValid(const FApartmentData& Apartment)
 	{
-		return Apartment.Id > 0
-			&& Apartment.Area > 0.f
-			&& !Apartment.Status.IsEmpty()
-			&& !Apartment.FocusPoint.IsNearlyZero();
+		return Apartment.Id > 0 && Apartment.Area > 0.f && !Apartment.Status.IsEmpty() && !Apartment.FocusPoint.IsNearlyZero();
 	}
 } // namespace
 

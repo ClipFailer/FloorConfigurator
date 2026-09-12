@@ -3,15 +3,13 @@
 #pragma once
 
 #include "CoreMinimal.h"
-
-#include "Subsystems/GameInstanceSubsystem.h"
 #include "Data/BuildingConfig.h"
 #include "Data/ConfiguratorTypes.h"
+#include "Subsystems/GameInstanceSubsystem.h"
 #include "FloorConfiguratorSubsystem.generated.h"
 
-
 /**
- *	Сабсистема конфигуратора здания.
+ *	Подсистема конфигуратора здания.
  *  При инициализации загружает конфиг здания.
  */
 UCLASS()
@@ -29,7 +27,7 @@ public:
 
 	/**
 	 * Обновляет состояние навигации на этаж (Floor)
-	 * 
+	 *
 	 * @param FloorIndex индекс этажа в floors.
 	 */
 	UFUNCTION(BlueprintCallable)
@@ -53,17 +51,34 @@ public:
 
 	// Делегаты
 	UPROPERTY(BlueprintAssignable, Category = "Configurator|Events")
-	FOnViewModeChanged		OnViewModeChanged;		// Смена мода отображения.
+	FOnViewModeChanged OnViewModeChanged; // Смена мода отображения.
 
 	UPROPERTY(BlueprintAssignable, Category = "Configurator|Events")
-	FOnFloorSelected		OnFloorSelected;		// Фокус на этаже.
+	FOnFloorSelected OnFloorSelected; // Фокус на этаже.
 
 	UPROPERTY(BlueprintAssignable, Category = "Configurator|Events")
-	FOnApartmentSelected	OnApartmentSelected;	// Фокус на квартиру.
+	FOnApartmentSelected OnApartmentSelected; // Фокус на квартиру.
+
+	/**
+	 * Вовзращает кешированный FocusPoint здания.
+	 *
+	 * @return             Средняя точка.
+	 */
+	UFUNCTION(BlueprintCallable)
+	FVector GetGenplanFocusPoint() const { return CachedGeneralFocusPoint; }
+
+	/**
+	 * Вовзращает кешированный FocusPoint этажа.
+	 *
+	 * @param FloorIndex   Индекс этажа.
+	 * @return             Средняя точка.
+	 */
+	UFUNCTION(BlueprintCallable)
+	FVector GetFloorFocusPoint(int32 FloorIndex) const;
 
 protected:
 	/**
-	 *  Инициализатор сабсистемы.
+	 *  Инициализатор подсистемы.
 	 *
 	 *	Загружает конфиг в BuildingConfig
 	 */
@@ -78,17 +93,17 @@ protected:
 	 */
 	const FApartmentData* FindApartmentById(int32 ApartmentId, int32& OutFloorIndex) const;
 
-	/**
-	 * Вычисляет средний FocusPoint всех квартир этажа.
-	 *
-	 * @param FloorIndex   Индекс этажа.
-	 * @return             Средняя точка. ZeroVector, если этаж пуст.
-	 */
-	FVector GetFloorFocusPoint(int32 FloorIndex) const;
-	
-	TArray<FViewState> StateHistory;				// История состояний для возврата к предыдущему.
+	/** Вычисляет и кеширует FocusPoint общего вида здания. */
+	void CalculateGenplanFocusPoint();
 
-	FBuildingConfig		BuildingConfig;
-	FViewState			ViewState;
+	/** Вычисляет и кеширует FocusPoint`ы всех этажей. */
+	void CalculateFloorFocusPoints();
 
+	TArray<FViewState> StateHistory; // История состояний для возврата к предыдущему.
+
+	FBuildingConfig BuildingConfig;
+	FViewState		ViewState;
+
+	FVector			CachedGeneralFocusPoint;
+	TArray<FVector> CachedFloorFocusPoints;
 };
