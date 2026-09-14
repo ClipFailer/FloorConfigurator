@@ -9,8 +9,8 @@
 #include "FloorConfiguratorSubsystem.generated.h"
 
 /**
- *	Подсистема конфигуратора здания.
- *  При инициализации загружает конфиг здания.
+ * Подсистема конфигуратора здания.
+ * При инициализации загружает конфиг здания.
  */
 UCLASS()
 class FLOORCONFIGURATOR_API UFloorConfiguratorSubsystem : public UGameInstanceSubsystem
@@ -18,71 +18,58 @@ class FLOORCONFIGURATOR_API UFloorConfiguratorSubsystem : public UGameInstanceSu
 	GENERATED_BODY()
 
 public:
+	// ─────────────────────────────────────────────────────────────────
+	//  Геттеры
+	// ─────────────────────────────────────────────────────────────────
+
+	/** Возвращает конфиг здания. */
 	UFUNCTION(BlueprintPure, Category = "Configurator|Config")
 	const FBuildingConfig& GetBuildingConfig() const { return BuildingConfig; }
 
-	/** Обновляет состояние навигации на общий план (Genplan) */
-	UFUNCTION(BlueprintCallable)
-	void RequestGenplan();
-
-	/**
-	 * Обновляет состояние навигации на этаж (Floor)
-	 *
-	 * @param FloorIndex индекс этажа в floors.
-	 */
-	UFUNCTION(BlueprintCallable)
-	void RequestFloor(int32 FloorIndex);
-
-	/**
-	 * Обновляет состояние навигации на квартиру (Apartment)
-	 *
-	 * @param ApartmentIndex индекс этажа в apartments.
-	 */
-	UFUNCTION(BlueprintCallable)
-	void RequestApartment(int32 ApartmentId);
-
-	/** Откатывает последнее навигационное действие. */
-	UFUNCTION(BlueprintCallable, Category = "Configurator|Navigation")
-	void GoBack();
-
-	/** true, если есть что откатывать. */
-	UFUNCTION(BlueprintPure, Category = "Configurator|Navigation")
-	bool CanGoBack() const { return StateHistory.Num() > 0; }
-
-	// Делегаты
-	UPROPERTY(BlueprintAssignable, Category = "Configurator|Events")
-	FOnViewModeChanged OnViewModeChanged; // Смена мода отображения.
-
-	UPROPERTY(BlueprintAssignable, Category = "Configurator|Events")
-	FOnFloorSelected OnFloorSelected; // Фокус на этаже.
-
-	UPROPERTY(BlueprintAssignable, Category = "Configurator|Events")
-	FOnApartmentSelected OnApartmentSelected; // Фокус на квартиру.
-
-	/**
-	 * Вовзращает кешированный FocusPoint здания.
-	 *
-	 * @return             Средняя точка.
-	 */
-	UFUNCTION(BlueprintCallable)
+	/** Возвращает кешированный FocusPoint здания (средняя точка). */
+	UFUNCTION(BlueprintPure)
 	FVector GetGenplanFocusPoint() const { return CachedGeneralFocusPoint; }
 
 	/**
-	 * Вовзращает кешированный FocusPoint этажа.
+	 * Возвращает кешированный FocusPoint этажа.
 	 *
 	 * @param FloorIndex   Индекс этажа.
 	 * @return             Средняя точка.
 	 */
-	UFUNCTION(BlueprintCallable)
+	UFUNCTION(BlueprintPure)
 	FVector GetFloorFocusPoint(int32 FloorIndex) const;
 
-protected:
 	/**
-	 *  Инициализатор подсистемы.
+	 * Возвращает высоту этажа в UE-единицах.
+	 * Считается как разница Z между этажом и следующим.
+	 * Для последнего этажа — высота предыдущего.
 	 *
-	 *	Загружает конфиг в BuildingConfig
+	 * @param FloorIndex   Индекс этажа.
 	 */
-	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
+	UFUNCTION(BlueprintPure, Category = "Configurator|Cache")
+	float GetFloorHeight(int32 FloorIndex) const;
+
+	/** Возвращает кэшированный размер квартиры (сторона квадрата). */
+	UFUNCTION(BlueprintPure, Category = "Configurator|Cache")
+	float GetApartmentSize() const { return CachedApartmentSize; }
+
+	/** Возвращает текущее состояние навигации. */
+	const FViewState& GetViewState() const { return ViewState; }
+
+	/** Возвращает количество этажей. */
+	UFUNCTION(BlueprintPure, Category = "Configurator|Cache")
+	int32 GetFloorsCount() const { return BuildingConfig.Floors.Num(); }
+
+	/**
+	 * Возвращает этаж по индексу.
+	 *
+	 * @param FloorIndex   Индекс этажа. Должен быть валидным.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Configurator|Cache")
+	const FFloorData& GetFloor(int32 FloorIndex) const { return BuildingConfig.Floors[FloorIndex]; }
+
+	/** Возвращает true, если есть что откатывать. */
+	bool CanGoBack() const { return StateHistory.Num() > 0; }
 
 	/**
 	 * Находит квартиру по ID.
@@ -93,17 +80,152 @@ protected:
 	 */
 	const FApartmentData* FindApartmentById(int32 ApartmentId, int32& OutFloorIndex) const;
 
+	/**
+	 * Проверяет, забронирована ли квартира локально.
+	 *
+	 * @param ApartmentId   ID квартиры.
+	 * @return              true, если квартира в списке забронированных.
+	 */
+	bool IsApartmentReserved(int32 ApartmentId) const;
+
+	/**
+	 * Возвращает true, если квартира недоступна для брони.
+	 * Учитывает и статус из JSON, и локальные брони.
+	 *
+	 * @param ApartmentId   ID квартиры.
+	 */
+	bool IsApartmentSold(int32 ApartmentId) const;
+
+	/**
+	 * Бронирует квартиру. По ТЗ достаточно лога.
+	 * Дополнительно сохраняет ID в локальном списке, чтобы состояние
+	 * не сбрасывалось при повторном открытии карточки.
+	 *
+	 * @param ApartmentId   ID квартиры.
+	 */
+	void ReserveApartment(int32 ApartmentId);
+
+	// ─────────────────────────────────────────────────────────────────
+	//  Команды навигации
+	// ─────────────────────────────────────────────────────────────────
+
+	/** Обновляет состояние навигации на общий план (Genplan). */
+	UFUNCTION(BlueprintCallable)
+	void RequestGenplan();
+
+	/**
+	 * Обновляет состояние навигации на этаж (Floor).
+	 *
+	 * @param FloorIndex   Индекс этажа в Floors.
+	 */
+	UFUNCTION(BlueprintCallable)
+	void RequestFloor(int32 FloorIndex);
+
+	/**
+	 * Обновляет состояние навигации на квартиру (Apartment).
+	 *
+	 * @param ApartmentId   ID квартиры из конфига.
+	 */
+	UFUNCTION(BlueprintCallable)
+	void RequestApartment(int32 ApartmentId);
+
+	/** Откатывает последнее навигационное действие. */
+	UFUNCTION(BlueprintCallable, Category = "Configurator|Navigation")
+	void GoBack();
+
+	// ─────────────────────────────────────────────────────────────────
+	//  Делегаты
+	// ─────────────────────────────────────────────────────────────────
+
+	// Смена режима отображения.
+	UPROPERTY(BlueprintAssignable, Category = "Configurator|Events")
+	FOnViewModeChanged OnViewModeChanged;
+
+	// Фокус на этаже.
+	UPROPERTY(BlueprintAssignable, Category = "Configurator|Events")
+	FOnFloorSelected OnFloorSelected;
+
+	// Фокус на квартиру.
+	UPROPERTY(BlueprintAssignable, Category = "Configurator|Events")
+	FOnApartmentSelected OnApartmentSelected;
+
+	// Курсор на карточке квартиры.
+	UPROPERTY(BlueprintAssignable, Category = "Configurator|Events")
+	FOnApartmentHovered OnApartmentHovered;
+
+	// Изменение фильтра "скрыть проданные".
+	UPROPERTY(BlueprintAssignable, Category = "Configurator|Events")
+	FOnHideSoldChanged OnHideSoldChanged;
+
+	// Квартира забронирована.
+	UPROPERTY(BlueprintAssignable, Category = "Configurator|Events")
+	FOnApartmentReserved OnApartmentReserved;
+
+protected:
+	// ─────────────────────────────────────────────────────────────────
+	//  Жизненный цикл
+	// ─────────────────────────────────────────────────────────────────
+
+	/**
+	 * Инициализатор подсистемы.
+	 * Загружает конфиг в BuildingConfig.
+	 */
+	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
+
+private:
+	// ─────────────────────────────────────────────────────────────────
+	//  Хелперы для вычислений
+	// ─────────────────────────────────────────────────────────────────
+
 	/** Вычисляет и кеширует FocusPoint общего вида здания. */
 	void CalculateGenplanFocusPoint();
 
-	/** Вычисляет и кеширует FocusPoint`ы всех этажей. */
+	/** Вычисляет и кеширует FocusPoint'ы всех этажей. */
 	void CalculateFloorFocusPoints();
 
-	TArray<FViewState> StateHistory; // История состояний для возврата к предыдущему.
+	/** Вычисляет размер квартиры из расстояний между ними. */
+	void CalculateApartmentSize();
 
+	/**
+	 * Возвращает Z-уровень этажа (по первой квартире).
+	 *
+	 * @param FloorIndex   Индекс этажа.
+	 */
+	float GetFloorLevelZ(int32 FloorIndex) const;
+
+	// ─────────────────────────────────────────────────────────────────
+	//  Состояние
+	// ─────────────────────────────────────────────────────────────────
+
+	// Загруженный конфиг здания.
 	FBuildingConfig BuildingConfig;
-	FViewState		ViewState;
 
-	FVector			CachedGeneralFocusPoint;
+	// Текущее состояние навигации.
+	FViewState ViewState;
+
+	// История действий для возврата к предыдущему.
+	TArray<FViewState> StateHistory;
+
+	// ID локально забронированных квартир.
+	TSet<int32> ReservedApartmentIds;
+
+	// ─────────────────────────────────────────────────────────────────
+	//  Кэши (вычисляются один раз при инициализации)
+	// ─────────────────────────────────────────────────────────────────
+
+	// Кеш FocusPoint всего здания.
+	FVector CachedGeneralFocusPoint;
+
+	// Кеш FocusPoint'ов всех этажей.
 	TArray<FVector> CachedFloorFocusPoints;
+
+	// Кэшированный размер квартиры в UE-единицах.
+	float CachedApartmentSize = 300.f;
+
+	// ─────────────────────────────────────────────────────────────────
+	//  Константы
+	// ─────────────────────────────────────────────────────────────────
+
+	// Дефолтная высота, если данных не хватает.
+	static constexpr float DefaultFloorHeight = 300.f;
 };

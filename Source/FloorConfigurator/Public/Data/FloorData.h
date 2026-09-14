@@ -14,6 +14,7 @@ struct FFloorData
 {
 	GENERATED_BODY()
 
+	// Список квартир этажа.
 	UPROPERTY(BlueprintReadOnly)
 	TArray<FApartmentData> Apartments;
 };

@@ -4,6 +4,10 @@
 #include "Camera/CameraComponent.h"
 #include "Subsystems/FloorConfiguratorSubsystem.h"
 
+// ─────────────────────────────────────────────────────────────────────
+//  Жизненный цикл
+// ─────────────────────────────────────────────────────────────────────
+
 AConfiguratorCamera::AConfiguratorCamera()
 {
 	Root = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
@@ -13,9 +17,141 @@ AConfiguratorCamera::AConfiguratorCamera()
 	Camera->SetupAttachment(Root);
 }
 
+void AConfiguratorCamera::BeginPlay()
+{
+	Super::BeginPlay();
+
+	// Получаем подсистему конфигуратора.
+	ConfiguratorSubsystem = GetGameInstance()->GetSubsystem<UFloorConfiguratorSubsystem>();
+
+	if (IsValid(ConfiguratorSubsystem))
+	{
+		ConfiguratorSubsystem->OnViewModeChanged.AddDynamic(this, &ThisClass::HandleViewModeChanged);
+		ConfiguratorSubsystem->OnFloorSelected.AddDynamic(this, &ThisClass::HandleFloorSelected);
+		ConfiguratorSubsystem->OnApartmentSelected.AddDynamic(this, &ThisClass::HandleApartmentSelected);
+
+		UpdateTargetForGenplan();
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("[ConfiguratorCamera] ConfiguratorSubsystem не найден."));
+	}
+}
+
+void AConfiguratorCamera::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	// Отписываемся от делегатов.
+	if (IsValid(ConfiguratorSubsystem))
+	{
+		ConfiguratorSubsystem->OnViewModeChanged.RemoveDynamic(this, &ThisClass::HandleViewModeChanged);
+		ConfiguratorSubsystem->OnFloorSelected.RemoveDynamic(this, &ThisClass::HandleFloorSelected);
+		ConfiguratorSubsystem->OnApartmentSelected.RemoveDynamic(this, &ThisClass::HandleApartmentSelected);
+	}
+
+	// Останавливаем таймер интерполяции, если активен.
+	GetWorld()->GetTimerManager().ClearTimer(InterpTimer);
+
+	Super::EndPlay(EndPlayReason);
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Орбита
+// ─────────────────────────────────────────────────────────────────────
+
+void AConfiguratorCamera::StartOrbit()
+{
+	// Орбита доступна только в режиме Genplan.
+	if (CurrentMode != EConfiguratorViewMode::Genplan)
+	{
+		return;
+	}
+
+	if (!IsValid(ConfiguratorSubsystem))
+	{
+		UE_LOG(LogTemp, Error, TEXT("[ConfiguratorCamera] ConfiguratorSubsystem не найден."));
+		return;
+	}
+
+	// Прерываем текущий перелёт, если он идёт.
+	if (bIsTransitioning)
+	{
+		StopInterp();
+	}
+
+	bIsOrbiting = true;
+
+	// Центр вращения — фокус здания.
+	const FVector FocusPoint = ConfiguratorSubsystem->GetGenplanFocusPoint();
+
+	// Позиция камеры относительно центра.
+	const FVector ToCamera = GetActorLocation() - FocusPoint;
+
+	// Радиус орбиты = расстояние от камеры до центра.
+	OrbitDistance = ToCamera.Size();
+
+	// Начальные углы.
+	const FRotator DirRotation = ToCamera.Rotation();
+	OrbitYaw = DirRotation.Yaw;
+	OrbitPitch = DirRotation.Pitch;
+}
+
+void AConfiguratorCamera::StopOrbit()
+{
+	bIsOrbiting = false;
+}
+
+void AConfiguratorCamera::AddOrbitInput(float DeltaYaw, float DeltaPitch)
+{
+	if (!bIsOrbiting)
+	{
+		return;
+	}
+	if (!IsValid(ConfiguratorSubsystem))
+	{
+		return;
+	}
+
+	// Смещаем углы. Pitch ограничен, чтобы камера не перевернулась.
+	OrbitYaw += DeltaYaw * OrbitSensitivity;
+	OrbitPitch = FMath::Clamp(
+		OrbitPitch + DeltaPitch * OrbitSensitivity,
+		OrbitMinPitch,
+		OrbitMaxPitch);
+
+	const FVector FocusPoint = ConfiguratorSubsystem->GetGenplanFocusPoint();
+
+	// Новая позиция камеры на сфере того же радиуса.
+	const FRotator OrbitRotation(OrbitPitch, OrbitYaw, 0.f);
+	const FVector  RotationDirection = OrbitRotation.Vector();
+	const FVector  NewLocation = FocusPoint + RotationDirection * OrbitDistance;
+	SetActorLocation(NewLocation);
+
+	// Поворачиваем камеру на центр.
+	const FRotator FocusRotation = (FocusPoint - NewLocation).Rotation();
+	SetActorRotation(FocusRotation);
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Обработчики делегатов Subsystem
+// ─────────────────────────────────────────────────────────────────────
+
 void AConfiguratorCamera::HandleViewModeChanged(EConfiguratorViewMode NewMode)
 {
-	UE_LOG(LogTemp, Log, TEXT("[ConfiguratorCamera] Смена режима вида."));
+	CurrentMode = NewMode;
+
+	// Сбрасываем орбиту.
+	bIsOrbiting = false;
+
+	// Прерываем текущий перелёт, чтобы начать новый.
+	if (bIsTransitioning)
+	{
+		StopInterp();
+	}
+
+	if (NewMode == EConfiguratorViewMode::Genplan)
+	{
+		UpdateTargetForGenplan();
+	}
 }
 
 void AConfiguratorCamera::HandleFloorSelected(int32 FloorIndex, FVector FocusPoint)
@@ -28,26 +164,9 @@ void AConfiguratorCamera::HandleApartmentSelected(int32 ApartmentId, FVector Foc
 	UpdateTargetForApartment(ApartmentId, FocusPoint);
 }
 
-void AConfiguratorCamera::BeginPlay()
-{
-	Super::BeginPlay();
-
-	// Получаем сабсистему конфигуратора.
-	ConfiguratorSubsystem = GetGameInstance()->GetSubsystem<UFloorConfiguratorSubsystem>();
-
-	// Если сабсистема валидна - подключаемся к делегатам.
-	if (IsValid(ConfiguratorSubsystem))
-	{
-		ConfiguratorSubsystem->OnViewModeChanged.AddDynamic(this, &ThisClass::HandleViewModeChanged);
-		ConfiguratorSubsystem->OnFloorSelected.AddDynamic(this, &ThisClass::HandleFloorSelected);
-		ConfiguratorSubsystem->OnApartmentSelected.AddDynamic(this, &ThisClass::HandleApartmentSelected);
-		UpdateTargetForGenplan();
-	}
-	else
-	{
-		UE_LOG(LogTemp, Error, TEXT("[ConfiguratorCamera] ConfiguratorSubsystem не найден."));
-	}
-}
+// ─────────────────────────────────────────────────────────────────────
+//  Установка целей перелёта
+// ─────────────────────────────────────────────────────────────────────
 
 void AConfiguratorCamera::UpdateTargetForGenplan()
 {
@@ -56,48 +175,77 @@ void AConfiguratorCamera::UpdateTargetForGenplan()
 		return;
 	}
 
-	FVector GenplanFocusPoint = ConfiguratorSubsystem->GetGenplanFocusPoint();
-
+	const FVector GenplanFocusPoint = ConfiguratorSubsystem->GetGenplanFocusPoint();
 	SetTargetFromFocus(GenplanFocusPoint, GenplanOffset);
-
-	StartInterp();
 }
 
 void AConfiguratorCamera::UpdateTargetForFloor(int32 FloorIndex, const FVector& FocusPoint)
 {
 	SetTargetFromFocus(FocusPoint, FloorOffset);
-
-	StartInterp();
-
-	UE_LOG(LogTemp, Log, TEXT("[ConfiguratorCamera] Фокус камеры на этаже %d."), FloorIndex);
 }
 
 void AConfiguratorCamera::UpdateTargetForApartment(int32 ApartmentId, const FVector& FocusPoint)
 {
-	SetTargetFromFocus(FocusPoint, ApartmentOffset);
-
-	StartInterp();
-
-	UE_LOG(LogTemp, Log, TEXT("[ConfiguratorCamera] Фокус камеры на квартире %d."), ApartmentId);
+	SetTargetFromApartment(FocusPoint);
 }
 
 void AConfiguratorCamera::SetTargetFromFocus(const FVector& FocusPoint, const FVector& Offset)
 {
 	TargetLocation = FocusPoint + Offset;
-
-	// Получаем точку, куда нужно смотреть камере с позиции цели.
 	TargetRotation = (FocusPoint - TargetLocation).Rotation();
+
+	StartInterp();
 }
+
+void AConfiguratorCamera::SetTargetFromApartment(const FVector& ApartmentFocus)
+{
+	if (!IsValid(ConfiguratorSubsystem))
+	{
+		return;
+	}
+
+	// Смотрим в центр квартиры, а не в её основание.
+	const FVector ApartmentCenter = ApartmentFocus + FVector(0.f, 0.f, ApartmentViewHeight);
+
+	const FVector BuildingCenter = ConfiguratorSubsystem->GetGenplanFocusPoint();
+
+	// Направление отхода — от центра здания к квартире, в плоскости XY.
+	FVector Direction = ApartmentCenter - BuildingCenter;
+	Direction.Z = 0.f;
+	if (Direction.IsNearlyZero())
+	{
+		Direction = FVector(-1.f, 0.f, 0.f);
+	}
+	Direction.Normalize();
+
+	// Дистанция обзора пропорциональна размеру квартиры —
+	// камера автоматически подстраивается под масштаб данных из JSON.
+	const float ApartmentSize = ConfiguratorSubsystem->GetApartmentSize();
+	const float ViewDistance = ApartmentSize * ApartmentViewDistanceMultiplier;
+
+	const FVector Offset = Direction * ViewDistance;
+
+	TargetLocation = ApartmentCenter + Offset;
+	TargetRotation = (ApartmentCenter - TargetLocation).Rotation();
+
+	StartInterp();
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Интерполяция
+// ─────────────────────────────────────────────────────────────────────
 
 void AConfiguratorCamera::StartInterp()
 {
-	// Если таймер уже активен - ничего не делаем.
+	// Если таймер уже активен — ничего не делаем.
 	if (bIsTransitioning)
+	{
 		return;
+	}
 
 	bIsTransitioning = true;
 
-	// Запускаем таймер, который вызывает InterpStep каждую 1.f / InterpFrequency секунду.
+	// Запускаем таймер: InterpStep каждые 1.f / InterpFrequency секунд.
 	GetWorld()->GetTimerManager().SetTimer(
 		InterpTimer,
 		this,
@@ -109,55 +257,38 @@ void AConfiguratorCamera::StartInterp()
 void AConfiguratorCamera::StopInterp()
 {
 	bIsTransitioning = false;
-
-	// Останавливаем таймер.
 	GetWorld()->GetTimerManager().ClearTimer(InterpTimer);
 }
 
 void AConfiguratorCamera::InterpStep()
 {
-	// Фиксированная частота таймера.
 	const float DeltaTime = 1.f / InterpFrequency;
 
 	const float Distance = GetDistanceToTarget();
 	const float RotationDelta = GetRotationDeltaToTarget();
 
-	// Если расстояние меньше порога прибытия - останавливаем движение.
-	if (Distance <= ArrivalThreshold && RotationDelta <= ArrivalThreshold)
+	// Дошли до цели — доводим точно и останавливаемся.
+	if (Distance <= ArrivalDistanceThreshold && RotationDelta <= ArrivalRotationThreshold)
 	{
-		// Доводим камеру до цели.
 		SetActorLocation(TargetLocation);
 		SetActorRotation(TargetRotation);
-
-		// Останавливаем таймер.
 		StopInterp();
-
 		return;
 	}
 
-	if (Distance > ArrivalThreshold)
+	if (Distance > ArrivalDistanceThreshold)
 	{
 		const FVector CurrentLocation = GetActorLocation();
-
-		// Интерполированное перемещение камеры к цели за DeltaTime.
 		const FVector NewLocation = FMath::VInterpTo(
-			CurrentLocation,
-			TargetLocation,
-			DeltaTime,
-			InterpSpeed);
+			CurrentLocation, TargetLocation, DeltaTime, InterpSpeed);
 		SetActorLocation(NewLocation);
 	}
 
-	if (RotationDelta > ArrivalThreshold)
+	if (RotationDelta > ArrivalRotationThreshold)
 	{
 		const FRotator CurrentRotation = GetActorRotation();
-
-		// Интерполированное вращение камеры к цели за DeltaTime.
 		const FRotator NewRotation = FMath::RInterpTo(
-			CurrentRotation,
-			TargetRotation,
-			DeltaTime,
-			InterpSpeed);
+			CurrentRotation, TargetRotation, DeltaTime, InterpSpeed);
 		SetActorRotation(NewRotation);
 	}
 }
@@ -170,7 +301,11 @@ float AConfiguratorCamera::GetDistanceToTarget() const
 float AConfiguratorCamera::GetRotationDeltaToTarget() const
 {
 	const FRotator CurrentRotation = GetActorRotation();
-	return FMath::Sqrt(
-		FMath::Square(CurrentRotation.Yaw - TargetRotation.Yaw) +
-		FMath::Square(CurrentRotation.Pitch - TargetRotation.Pitch));
+
+	const float YawDelta = FMath::Abs(
+		FMath::FindDeltaAngleDegrees(CurrentRotation.Yaw, TargetRotation.Yaw));
+	const float PitchDelta = FMath::Abs(
+		FMath::FindDeltaAngleDegrees(CurrentRotation.Pitch, TargetRotation.Pitch));
+
+	return FMath::Sqrt(YawDelta * YawDelta + PitchDelta * PitchDelta);
 }

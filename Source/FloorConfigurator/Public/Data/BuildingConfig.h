@@ -9,13 +9,14 @@
 /**
  * Корневая структура конфигурации здания.
  * Содержит список этажей, загружаемый из JSON через FConfigLoader.
- * Используется как хранилище данных в UConfiguratorSubsystem.
+ * Используется как хранилище данных в UFloorConfiguratorSubsystem.
  */
 USTRUCT(BlueprintType)
 struct FBuildingConfig
 {
 	GENERATED_BODY()
 
+	// Список этажей здания.
 	UPROPERTY(BlueprintReadOnly)
 	TArray<FFloorData> Floors;
 };

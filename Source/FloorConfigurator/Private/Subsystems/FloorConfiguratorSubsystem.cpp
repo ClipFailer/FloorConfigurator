@@ -3,6 +3,31 @@
 #include "Subsystems/FloorConfiguratorSubsystem.h"
 #include "Data/ConfigLoader.h"
 
+// ─────────────────────────────────────────────────────────────────────
+//  Жизненный цикл
+// ─────────────────────────────────────────────────────────────────────
+
+void UFloorConfiguratorSubsystem::Initialize(FSubsystemCollectionBase& Collection)
+{
+	Super::Initialize(Collection);
+
+	// Загружаем конфиг.
+	if (!FConfigLoader::LoadConfig(BuildingConfig))
+	{
+		UE_LOG(LogTemp, Error, TEXT("[Subsystem] Ошибка загрузки конфига."));
+		return;
+	}
+
+	// Кешируем вычисляемые значения.
+	CalculateGenplanFocusPoint();
+	CalculateFloorFocusPoints();
+	CalculateApartmentSize();
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Команды навигации
+// ─────────────────────────────────────────────────────────────────────
+
 void UFloorConfiguratorSubsystem::RequestGenplan()
 {
 	// Если уже в Genplan — ничего не делаем.
@@ -11,138 +36,96 @@ void UFloorConfiguratorSubsystem::RequestGenplan()
 		return;
 	}
 
-	// Сохраняем текущее состояние в StateHistory.
 	StateHistory.Add(ViewState);
 
-	// Обновляем состояние.
 	ViewState.Mode = EConfiguratorViewMode::Genplan;
 	ViewState.FloorIndex = INDEX_NONE;
 	ViewState.ApartmentId = INDEX_NONE;
 
-	// Сообщаем подписчикам о изменении мода.
 	OnViewModeChanged.Broadcast(ViewState.Mode);
 }
 
 void UFloorConfiguratorSubsystem::RequestFloor(int32 FloorIndex)
 {
-	// Получаем и проверяем индекс этажа.
 	if (!BuildingConfig.Floors.IsValidIndex(FloorIndex))
 	{
-		UE_LOG(
-			LogTemp,
-			Warning,
-			TEXT("[FloorConfiguratorSubsystem] Передан невалидный индекс этажа при смене мода"));
-
+		UE_LOG(LogTemp, Warning, TEXT("[Subsystem] Невалидный индекс этажа: %d"), FloorIndex);
 		return;
 	}
 
-	// Если этаж пустой - ничего не делаем.
 	const FFloorData& Floor = BuildingConfig.Floors[FloorIndex];
 	if (Floor.Apartments.Num() == 0)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[FloorConfiguratorSubsystem] %d этаж пустой"), FloorIndex);
+		UE_LOG(LogTemp, Warning, TEXT("[Subsystem] Этаж %d пуст."), FloorIndex);
 		return;
 	}
 
-	// Если уже выбран этаж — ничего не делаем.
 	if (ViewState.Mode == EConfiguratorViewMode::Floor &&
 		ViewState.FloorIndex == FloorIndex)
 	{
 		return;
 	}
 
-	// Сохраняем текущее состояние в StateHistory.
 	StateHistory.Add(ViewState);
 
-	// Обновляем состояние.
 	ViewState.Mode = EConfiguratorViewMode::Floor;
 	ViewState.FloorIndex = FloorIndex;
 	ViewState.ApartmentId = INDEX_NONE;
 
-	FVector FloorFocusPoint = GetFloorFocusPoint(FloorIndex);
+	const FVector FloorFocusPoint = GetFloorFocusPoint(FloorIndex);
 
-	// Сообщаем подписчикам о изменениях.
 	OnViewModeChanged.Broadcast(ViewState.Mode);
 	OnFloorSelected.Broadcast(FloorIndex, FloorFocusPoint);
-
-	UE_LOG(
-		LogTemp,
-		Log,
-		TEXT("[FloorConfiguratorSubsystem] Фокус на точке: (%f,%f,%f)."),
-		FloorFocusPoint.X,
-		FloorFocusPoint.Y,
-		FloorFocusPoint.Z);
 }
 
 void UFloorConfiguratorSubsystem::RequestApartment(int32 ApartmentId)
 {
-	// Если квартира уже выбрана - ничего не делаем.
 	if (ViewState.Mode == EConfiguratorViewMode::Apartment &&
 		ViewState.ApartmentId == ApartmentId)
 	{
 		return;
 	}
 
-	// Получаем индекс этажа с нужной квартирой.
-	int32				  FoundFloorIndex = INDEX_NONE;
-	const FApartmentData* FoundApartment = FindApartmentById(ApartmentId, FoundFloorIndex);
+	int32				  FloorIndex = INDEX_NONE;
+	const FApartmentData* FoundApartment = FindApartmentById(ApartmentId, FloorIndex);
 
-	// Если этаж или квартира не найдены - ничего не делаем.
 	if (!FoundApartment)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[FloorConfiguratorSubsystem] квартира %d не найдена."), ApartmentId);
+		UE_LOG(LogTemp, Warning, TEXT("[Subsystem] Квартира %d не найдена."), ApartmentId);
 		return;
 	}
 
-	// Сохраняем текущее состояние в StateHistory.
 	StateHistory.Add(ViewState);
 
-	// Обновляем состояние.
 	ViewState.Mode = EConfiguratorViewMode::Apartment;
-	ViewState.FloorIndex = FoundFloorIndex;
+	ViewState.FloorIndex = FloorIndex;
 	ViewState.ApartmentId = ApartmentId;
 
-	// Сообщаем подписчикам о изменениях.
 	OnViewModeChanged.Broadcast(ViewState.Mode);
 	OnApartmentSelected.Broadcast(ApartmentId, FoundApartment->FocusPoint);
-
-	UE_LOG(
-		LogTemp,
-		Log,
-		TEXT("[FloorConfiguratorSubsystem] Фокус на точке: (%f,%f,%f)."),
-		FoundApartment->FocusPoint.X,
-		FoundApartment->FocusPoint.Y,
-		FoundApartment->FocusPoint.Z);
 }
 
 void UFloorConfiguratorSubsystem::GoBack()
 {
-	// Если нет в истории состояний - ничего не делаем
 	if (StateHistory.Num() == 0)
 	{
 		return;
 	}
 
-	// Снимаем последнее состояние с вершины стека.
-	const FViewState PreviousState = StateHistory.Pop();
-
-	// Применяем его — по режиму бросаем нужные делегаты.
-	ViewState = PreviousState;
+	ViewState = StateHistory.Pop();
 	OnViewModeChanged.Broadcast(ViewState.Mode);
 
-	// Возвращаем состояние.
 	switch (ViewState.Mode)
 	{
 		case EConfiguratorViewMode::Genplan:
 		{
-			// Ничего не делаем.
 			break;
 		}
 
 		case EConfiguratorViewMode::Floor:
 		{
-			// Оповещаем об изменениях.
-			OnFloorSelected.Broadcast(ViewState.FloorIndex, GetFloorFocusPoint(ViewState.FloorIndex));
+			OnFloorSelected.Broadcast(
+				ViewState.FloorIndex, GetFloorFocusPoint(ViewState.FloorIndex));
 			break;
 		}
 
@@ -159,20 +142,61 @@ void UFloorConfiguratorSubsystem::GoBack()
 	}
 }
 
-void UFloorConfiguratorSubsystem::Initialize(FSubsystemCollectionBase& Collection)
-{
-	Super::Initialize(Collection);
+// ─────────────────────────────────────────────────────────────────────
+//  Геттеры
+// ─────────────────────────────────────────────────────────────────────
 
-	// Загружаем и проверяем конфиг.
-	if (!FConfigLoader::LoadConfig(BuildingConfig))
+FVector UFloorConfiguratorSubsystem::GetFloorFocusPoint(int32 FloorIndex) const
+{
+	if (!CachedFloorFocusPoints.IsValidIndex(FloorIndex))
 	{
-		UE_LOG(LogTemp, Error, TEXT("[UFloorConfiguratorSubsystem] Ошибка загрузки конфига"));
-		return;
+		return FVector::ZeroVector;
 	}
 
-	// Кешируем для оптимизации.
-	CalculateGenplanFocusPoint();
-	CalculateFloorFocusPoints();
+	return CachedFloorFocusPoints[FloorIndex];
+}
+
+float UFloorConfiguratorSubsystem::GetFloorHeight(int32 FloorIndex) const
+{
+	if (!BuildingConfig.Floors.IsValidIndex(FloorIndex))
+	{
+		return DefaultFloorHeight;
+	}
+
+	if (BuildingConfig.Floors.IsValidIndex(FloorIndex + 1))
+	{
+		const float CurrentZ = GetFloorLevelZ(FloorIndex);
+		const float NextZ = GetFloorLevelZ(FloorIndex + 1);
+		const float Delta = NextZ - CurrentZ;
+
+		if (Delta > 0)
+		{
+			return Delta;
+		}
+	}
+
+	if (BuildingConfig.Floors.IsValidIndex(FloorIndex - 1))
+	{
+		return GetFloorHeight(FloorIndex - 1);
+	}
+
+	return DefaultFloorHeight;
+}
+
+float UFloorConfiguratorSubsystem::GetFloorLevelZ(int32 FloorIndex) const
+{
+	if (!BuildingConfig.Floors.IsValidIndex(FloorIndex))
+	{
+		return 0.f;
+	}
+
+	const FFloorData& Floor = BuildingConfig.Floors[FloorIndex];
+	if (Floor.Apartments.Num() == 0)
+	{
+		return 0.f;
+	}
+
+	return Floor.Apartments[0].FocusPoint.Z;
 }
 
 const FApartmentData* UFloorConfiguratorSubsystem::FindApartmentById(
@@ -180,10 +204,8 @@ const FApartmentData* UFloorConfiguratorSubsystem::FindApartmentById(
 {
 	for (int32 FloorIndex = 0; FloorIndex < BuildingConfig.Floors.Num(); ++FloorIndex)
 	{
-		// Получаем этаж.
 		const FFloorData& Floor = BuildingConfig.Floors[FloorIndex];
 
-		// Ищем нужную квартиру.
 		const FApartmentData* FoundApartment = Floor.Apartments.FindByPredicate(
 			[ApartmentId](const FApartmentData& Apartment) {
 				return Apartment.Id == ApartmentId;
@@ -200,34 +222,74 @@ const FApartmentData* UFloorConfiguratorSubsystem::FindApartmentById(
 	return nullptr;
 }
 
-FVector UFloorConfiguratorSubsystem::GetFloorFocusPoint(int32 FloorIndex) const
+bool UFloorConfiguratorSubsystem::IsApartmentReserved(int32 ApartmentId) const
 {
-	// Если индекс этажа невалиден - ничего не делаем.
-	if (!CachedFloorFocusPoints.IsValidIndex(FloorIndex))
+	return ReservedApartmentIds.Contains(ApartmentId);
+}
+
+bool UFloorConfiguratorSubsystem::IsApartmentSold(int32 ApartmentId) const
+{
+	if (ReservedApartmentIds.Contains(ApartmentId))
 	{
-		return FVector::ZeroVector;
+		return true;
 	}
 
-	return CachedFloorFocusPoints[FloorIndex];
+	int32				  FloorIndex = INDEX_NONE;
+	const FApartmentData* Apartment = FindApartmentById(ApartmentId, FloorIndex);
+	return Apartment && Apartment->IsSold();
 }
+
+// ─────────────────────────────────────────────────────────────────────
+//  Бронирование
+// ─────────────────────────────────────────────────────────────────────
+
+void UFloorConfiguratorSubsystem::ReserveApartment(int32 ApartmentId)
+{
+	int32				  FloorIndex = INDEX_NONE;
+	const FApartmentData* Apartment = FindApartmentById(ApartmentId, FloorIndex);
+
+	if (!Apartment)
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("[Subsystem] ReserveApartment: квартира %d не найдена."), ApartmentId);
+		return;
+	}
+
+	if (IsApartmentSold(ApartmentId))
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("[Subsystem] Квартира %d уже забронирована."), ApartmentId);
+		return;
+	}
+
+	ReservedApartmentIds.Add(ApartmentId);
+
+	UE_LOG(LogTemp, Warning,
+		TEXT("[Subsystem] Квартира %d (этаж %d) забронирована."), ApartmentId, FloorIndex);
+
+	OnApartmentReserved.Broadcast(ApartmentId);
+}
+
+// ─────────────────────────────────────────────────────────────────────
+//  Вычисление кешей
+// ─────────────────────────────────────────────────────────────────────
 
 void UFloorConfiguratorSubsystem::CalculateGenplanFocusPoint()
 {
-	FVector ApartmentsFocusPointSum = FVector::ZeroVector;
+	FVector FocusPointSum = FVector::ZeroVector;
 	int32	ApartmentsCount = 0;
 
-	// Получаем сумму FocusPoint всех квартир.
 	for (const FFloorData& Floor : BuildingConfig.Floors)
 	{
 		for (const FApartmentData& Apartment : Floor.Apartments)
 		{
-			ApartmentsFocusPointSum += Apartment.FocusPoint;
+			FocusPointSum += Apartment.FocusPoint;
 			++ApartmentsCount;
 		}
 	}
 
 	CachedGeneralFocusPoint = (ApartmentsCount > 0)
-		? ApartmentsFocusPointSum / static_cast<float>(ApartmentsCount)
+		? FocusPointSum / static_cast<float>(ApartmentsCount)
 		: FVector::ZeroVector;
 }
 
@@ -237,16 +299,56 @@ void UFloorConfiguratorSubsystem::CalculateFloorFocusPoints()
 
 	for (const FFloorData& Floor : BuildingConfig.Floors)
 	{
-		// Суммируем все FocusPoint квартир этажа.
+		if (Floor.Apartments.Num() == 0)
+		{
+			CachedFloorFocusPoints.Add(FVector::ZeroVector);
+			continue;
+		}
+
 		FVector FocusPoint = FVector::ZeroVector;
 		for (const FApartmentData& Apartment : Floor.Apartments)
 		{
 			FocusPoint += Apartment.FocusPoint;
 		}
-		// Получаем среднее арифметическое FocusPoint квартир - центр этажа.
 		FocusPoint /= static_cast<float>(Floor.Apartments.Num());
 
-		// Кешируем.
 		CachedFloorFocusPoints.Add(FocusPoint);
 	}
+}
+
+void UFloorConfiguratorSubsystem::CalculateApartmentSize()
+{
+	float MinDistanceSq = FLT_MAX;
+
+	for (const FFloorData& Floor : BuildingConfig.Floors)
+	{
+		const int32 Num = Floor.Apartments.Num();
+
+		if (Num < 2)
+		{
+			continue;
+		}
+
+		for (int32 i = 0; i < Num; ++i)
+		{
+			for (int32 j = i + 1; j < Num; ++j)
+			{
+				const float DistSq = FVector::DistSquared2D(
+					Floor.Apartments[i].FocusPoint,
+					Floor.Apartments[j].FocusPoint);
+
+				if (DistSq > KINDA_SMALL_NUMBER && DistSq < MinDistanceSq)
+				{
+					MinDistanceSq = DistSq;
+				}
+			}
+		}
+	}
+
+	if (MinDistanceSq == FLT_MAX)
+	{
+		return;
+	}
+
+	CachedApartmentSize = FMath::Sqrt(MinDistanceSq);
 }

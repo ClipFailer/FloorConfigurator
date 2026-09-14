@@ -1,25 +1,26 @@
+// Alexey Nikolaichik, 2026. Test assignment for PlayEstate.
+
 #include "Data/ConfigLoader.h"
 #include "Data/BuildingConfig.h"
 #include "JsonObjectConverter.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 
-// анонимный namespace
 namespace
 {
-	// Проверяет, что все обязательные поля квартиры заполнены корректно.
+	// Проверяет, что обязательные поля квартиры заполнены корректно.
 	bool IsApartmentValid(const FApartmentData& Apartment)
 	{
-		return Apartment.Id > 0 && Apartment.Area > 0.f && !Apartment.Status.IsEmpty() && !Apartment.FocusPoint.IsNearlyZero();
+		return Apartment.Id > 0 &&
+			Apartment.Area > 0.f &&
+			!Apartment.Status.IsEmpty();
 	}
 } // namespace
 
 bool FConfigLoader::LoadConfig(FBuildingConfig& OutConfig)
 {
-	// Получаем путь к конфигу config.json из папки Config.
+	// Путь к конфигу: Config/config.json.
 	const FString ConfigPath = FPaths::ProjectConfigDir() / TEXT("config.json");
-
-	UE_LOG(LogTemp, Log, TEXT("[FConfigLoader] Поиск файла конфига: %s"), *ConfigPath);
 
 	if (!FPaths::FileExists(ConfigPath))
 	{
@@ -27,7 +28,7 @@ bool FConfigLoader::LoadConfig(FBuildingConfig& OutConfig)
 		return false;
 	}
 
-	// Читаем содержимое в строку.
+	// Читаем файл в строку.
 	FString ConfigString;
 	if (!FFileHelper::LoadFileToString(ConfigString, *ConfigPath))
 	{
@@ -35,24 +36,22 @@ bool FConfigLoader::LoadConfig(FBuildingConfig& OutConfig)
 		return false;
 	}
 
-	// Парсим строку в структуру FBuildingConfig
+	// Парсим JSON в структуру.
 	FBuildingConfig ParsedConfig;
 	if (!FJsonObjectConverter::JsonObjectStringToUStruct(ConfigString, &ParsedConfig))
 	{
-		UE_LOG(LogTemp, Error, TEXT("[FConfigLoader] Ошибка парсинга JSON"));
+		UE_LOG(LogTemp, Error, TEXT("[FConfigLoader] Ошибка парсинга JSON."));
 		return false;
 	}
 
 	if (ParsedConfig.Floors.Num() == 0)
 	{
-		UE_LOG(LogTemp, Error, TEXT("[FConfigLoader] В конфиге нет этажей"));
+		UE_LOG(LogTemp, Error, TEXT("[FConfigLoader] В конфиге нет этажей."));
 		return false;
 	}
 
-	// Проверяем валидность конфига.
-	// Проходим по всем этажам и проверяем каждую квартиру
-	// и если она невалидна - удаляем из массива квартир.
-	// Если этаж пустой - тоже удаляем.
+	// Валидация: удаляем невалидные квартиры и пустые этажи.
+	// Проходим с конца, чтобы безопасно удалять по индексу.
 	for (int32 FloorIndex = ParsedConfig.Floors.Num() - 1; FloorIndex >= 0; --FloorIndex)
 	{
 		FFloorData& Floor = ParsedConfig.Floors[FloorIndex];
@@ -61,19 +60,11 @@ bool FConfigLoader::LoadConfig(FBuildingConfig& OutConfig)
 		{
 			const FApartmentData& Apartment = Floor.Apartments[ApartmentIndex];
 
-			// Проверка квартиры на валидность.
-			const bool bValid = IsApartmentValid(Apartment);
-
-			// Удаляем квартиру из массива, если она невалидна.
-			if (!bValid)
+			if (!IsApartmentValid(Apartment))
 			{
-				UE_LOG(
-					LogTemp,
-					Warning,
+				UE_LOG(LogTemp, Warning,
 					TEXT("[FConfigLoader] Пропускаем невалидную квартиру: ID=%d, Area=%.2f, Status='%s'"),
-					Apartment.Id,
-					Apartment.Area,
-					*Apartment.Status);
+					Apartment.Id, Apartment.Area, *Apartment.Status);
 
 				Floor.Apartments.RemoveAt(ApartmentIndex);
 			}
@@ -81,10 +72,8 @@ bool FConfigLoader::LoadConfig(FBuildingConfig& OutConfig)
 
 		if (Floor.Apartments.Num() == 0)
 		{
-			UE_LOG(
-				LogTemp,
-				Warning,
-				TEXT("[FConfigLoader] Этаж %d хранит невалидные квартиры: удаление этажа"),
+			UE_LOG(LogTemp, Warning,
+				TEXT("[FConfigLoader] Этаж %d пуст после валидации — удаляем."),
 				FloorIndex);
 
 			ParsedConfig.Floors.RemoveAt(FloorIndex);
@@ -93,18 +82,12 @@ bool FConfigLoader::LoadConfig(FBuildingConfig& OutConfig)
 
 	if (ParsedConfig.Floors.Num() == 0)
 	{
-		UE_LOG(LogTemp, Error, TEXT("[FConfigLoader] Нет валидных этажей после валидации"));
+		UE_LOG(LogTemp, Error, TEXT("[FConfigLoader] Нет валидных этажей после валидации."));
 		return false;
 	}
 
-	UE_LOG(
-		LogTemp,
-		Log,
-		TEXT("[FConfigLoader] %d этажей загружено из конфига"),
-		ParsedConfig.Floors.Num());
+	UE_LOG(LogTemp, Log, TEXT("[FConfigLoader] Загружено этажей: %d"), ParsedConfig.Floors.Num());
 
-	// Перемещаем готовый конфиг.
 	OutConfig = MoveTemp(ParsedConfig);
-
 	return true;
 }
